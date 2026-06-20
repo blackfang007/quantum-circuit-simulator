@@ -1,0 +1,10 @@
+{
+  "name": "qsim",
+  "version": "1.0.0",
+  "description": "Quantum circuit simulator built from scratch",
+  "type": "module",
+  "scripts": {
+    "test": "node src/tests.js",
+    "dev": "npx serve . --listen 3000"
+  }
+}
