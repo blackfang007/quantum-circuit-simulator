@@ -1,136 +1,147 @@
 /**
  * app.js — top-level controller
  *
- * This is the only file that knows about all the others.
- * It wires together: Circuit ↔ Renderer ↔ Runner ↔ StatePanel
- *
- * DATA FLOW (unidirectional):
- *   User clicks cell
- *     → app.js calls circuit.addGate()
- *     → app.js calls runCircuit()  (gets new StateVector)
- *     → app.js calls renderer.render()  (redraws SVG)
- *     → app.js calls statePanel.update()  (updates numbers)
- *
- * Nothing flows backwards. The circuit is always the source of truth.
+ * DATA FLOW (unidirectional, always):
+ *   User action → circuit model mutation → refresh() → re-render all views
  */
 
 import { Circuit, PRESETS } from './core/circuit.js';
 import { Renderer }         from './ui/renderer.js';
 import { StatePanel }       from './ui/statepanel.js';
+import { QASMPanel }        from './ui/qasmpanel.js';
+import { Palette }          from './ui/palette.js';
 import { runCircuit }       from './core/runner.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────
-
-const svgEl         = document.getElementById('circuit-svg');
-const statePanelEl  = document.getElementById('state-panel');
-const qubitCountEl  = document.getElementById('qubit-count');
-const gateButtons   = document.querySelectorAll('[data-gate]');
-const runBtn        = document.getElementById('btn-run');
-const clearBtn      = document.getElementById('btn-clear');
-const undoBtn       = document.getElementById('btn-undo');
-const exportQASMBtn = document.getElementById('btn-qasm');
-const exportQiskitBtn = document.getElementById('btn-qiskit');
-const exportOutput  = document.getElementById('export-output');
+const svgEl        = document.getElementById('circuit-svg');
+const statePanelEl = document.getElementById('state-panel');
+const qasmEl       = document.getElementById('qasm-panel');
+const paletteEl    = document.getElementById('palette');
+const qubitSel     = document.getElementById('qubit-count');
+const stepDisplay  = document.getElementById('step-display');
 
 // ── State ─────────────────────────────────────────────────────────────
-
-let circuit      = new Circuit(2, 10);
+let circuit      = new Circuit(2, 12);
 let selectedGate = 'H';
+let stepMode     = false;   // column step-through mode
+let stepCol      = -1;      // current step column (-1 = run all)
 
-const renderer   = new Renderer(svgEl, circuit, {
-  onClickCell:  (col, qubit) => placeGate(col, qubit),
-  onClickGate:  (col, qubit) => removeGate(col, qubit),
+// ── Instantiate views ─────────────────────────────────────────────────
+const palette = new Palette(paletteEl, gate => { selectedGate = gate; });
+palette.render();
+
+// Make palette gates draggable
+paletteEl.addEventListener('mousedown', e => {
+  const btn = e.target.closest('.palette-gate');
+  if (!btn) return;
+  selectedGate = btn.dataset.gate;
+  palette.el.querySelectorAll('.palette-gate').forEach(b =>
+    b.classList.toggle('selected', b === btn));
+  renderer.startDrag(btn.dataset.gate, e.clientX - 17, e.clientY - 17);
+});
+
+const renderer = new Renderer(svgEl, circuit, {
+  onClickCell:  (col, qubit)       => placeGate(col, qubit, selectedGate),
+  onClickGate:  (col, qubit)       => { circuit.removeGateAt(col, qubit); refresh(); },
+  onDeleteRow:  (qubit)            => { circuit.removeAllGatesOnQubit(qubit); refresh(); },
+  onDropCell:   (col, qubit, gate) => placeGate(col, qubit, gate),
 });
 
 const statePanel = new StatePanel(statePanelEl);
+const qasmPanel  = new QASMPanel(qasmEl);
 
 // ── Core actions ──────────────────────────────────────────────────────
 
-function placeGate(col, qubit) {
-  const op = { col, qubit, gate: selectedGate };
-
-  // Two-qubit gates need ctrl + target
-  if (selectedGate === 'CNOT') {
+function placeGate(col, qubit, gate) {
+  const op = { col, qubit, gate };
+  if (gate === 'CNOT') {
     const target = (qubit + 1) % circuit.numQubits;
     Object.assign(op, { ctrl: qubit, target });
   }
-  if (selectedGate === 'SWAP') {
+  if (gate === 'SWAP') {
     const target = (qubit + 1) % circuit.numQubits;
     Object.assign(op, { target });
   }
-
   circuit.addGate(op);
   refresh();
 }
 
-function removeGate(col, qubit) {
-  circuit.removeGateAt(col, qubit);
-  refresh();
-}
-
-/**
- * refresh() — re-runs simulation and redraws everything.
- * Called after every state change. Fast enough to run synchronously
- * for up to ~20 qubits (2^20 = 1M amplitudes), though the UI only
- * exposes 1-3 qubits for readability.
- */
 function refresh() {
-  const { state, measureResults } = runCircuit(circuit);
+  // In step mode, only run up to stepCol; otherwise run full circuit
+  let simCircuit = circuit;
+  if (stepMode && stepCol >= 0) {
+    const { Circuit: C } = { Circuit };
+    // Build a temporary circuit with only ops up to stepCol inclusive
+    const tempOps = circuit.sorted().filter(op => op.col <= stepCol);
+    const fake = { numQubits: circuit.numQubits, numCols: circuit.numCols,
+                   ops: tempOps, sorted: () => tempOps };
+    simCircuit = fake;
+  }
+
+  const { state, measureResults } = runCircuit(simCircuit);
   renderer.render(measureResults);
   statePanel.update(state, measureResults);
+  qasmPanel.update(circuit);
+
+  if (stepMode) {
+    stepDisplay.textContent = stepCol < 0 ? 'All steps'
+      : `Viewing after step ${stepCol + 1}`;
+    stepDisplay.hidden = false;
+  } else {
+    stepDisplay.hidden = true;
+  }
 }
 
-// ── UI event wiring ───────────────────────────────────────────────────
+// ── Toolbar controls ──────────────────────────────────────────────────
 
-// Gate toolbar
-gateButtons.forEach(btn => {
-  btn.addEventListener('click', () => {
-    selectedGate = btn.dataset.gate;
-    gateButtons.forEach(b => b.classList.toggle('active', b === btn));
-  });
-});
-
-// Qubit count selector
-qubitCountEl.addEventListener('change', () => {
-  const n = +qubitCountEl.value;
-  circuit = new Circuit(n, 10);
-  renderer.circuit = circuit; // swap the reference
+// Qubit count
+qubitSel.addEventListener('change', () => {
+  circuit = new Circuit(+qubitSel.value, 12);
+  renderer.circuit = circuit;
   refresh();
 });
 
-// Preset buttons
+// Presets
 document.querySelectorAll('[data-preset]').forEach(btn => {
   btn.addEventListener('click', () => {
-    const preset = PRESETS[btn.dataset.preset];
-    if (!preset) return;
-    circuit = Circuit.fromJSON(JSON.stringify({
-      numQubits: preset.numQubits,
-      numCols:   10,
-      ops:       preset.ops,
-    }));
-    qubitCountEl.value = preset.numQubits;
-    renderer.circuit = circuit;
+    const p = PRESETS[btn.dataset.preset];
+    if (!p) return;
+    circuit = Circuit.fromJSON(JSON.stringify({ numQubits: p.numQubits, numCols: 12, ops: p.ops }));
+    qubitSel.value    = p.numQubits;
+    renderer.circuit  = circuit;
+    stepMode = false;
+    stepCol  = -1;
     refresh();
   });
 });
 
-// Run / clear / undo
-runBtn.addEventListener('click',   refresh);
-clearBtn.addEventListener('click', () => { circuit.clear(); refresh(); });
-undoBtn.addEventListener('click',  () => { circuit.undo();  refresh(); });
+// Undo / Clear
+document.getElementById('btn-undo').addEventListener('click', () => { circuit.undo(); refresh(); });
+document.getElementById('btn-clear').addEventListener('click', () => { circuit.clear(); refresh(); });
 
-// Export
-exportQASMBtn.addEventListener('click', () => {
-  exportOutput.value = circuit.toQASM();
-  exportOutput.hidden = false;
-  exportOutput.select();
+// Dark mode toggle
+const darkBtn = document.getElementById('btn-dark');
+darkBtn.addEventListener('click', () => {
+  document.documentElement.classList.toggle('dark');
+  darkBtn.textContent = document.documentElement.classList.contains('dark') ? '☀ Light' : '☾ Dark';
 });
-exportQiskitBtn.addEventListener('click', () => {
-  exportOutput.value = circuit.toQiskit();
-  exportOutput.hidden = false;
-  exportOutput.select();
+
+// Step through
+document.getElementById('btn-step-back').addEventListener('click', () => {
+  stepMode = true;
+  stepCol  = Math.max(-1, stepCol - 1);
+  refresh();
+});
+document.getElementById('btn-step-fwd').addEventListener('click', () => {
+  stepMode = true;
+  stepCol  = Math.min(circuit.numCols - 1, stepCol + 1);
+  refresh();
+});
+document.getElementById('btn-step-reset').addEventListener('click', () => {
+  stepMode = false;
+  stepCol  = -1;
+  refresh();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────
-
 refresh();
