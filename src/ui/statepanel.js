@@ -1,12 +1,7 @@
-/**
- * statepanel.js — state vector panel with phase colors, threshold filter,
- *                 Bloch sphere, and simulated histogram
- */
-
 export class StatePanel {
   constructor(containerEl) {
     this.el          = containerEl;
-    this.threshold   = 0.01; // hide amplitudes below 1%
+    this.threshold   = 0.01; 
     this.activeTab   = 'sv';
     this._lastState  = null;
   }
@@ -35,7 +30,7 @@ export class StatePanel {
     this._attachEvents();
   }
 
-  // ── State vector ──────────────────────────────────────────────────
+ 
 
   _buildSV(state) {
     const n     = state.n;
@@ -75,7 +70,7 @@ export class StatePanel {
     return html;
   }
 
-  // ── Bloch sphere ──────────────────────────────────────────────────
+  
 
   _buildBloch(state) {
     const bv  = state.blochVector(0);
@@ -128,7 +123,7 @@ export class StatePanel {
     </svg>`;
   }
 
-  // ── Histogram ─────────────────────────────────────────────────────
+  
 
   _buildHist(state) {
     const SHOTS = 1024;
@@ -165,7 +160,7 @@ export class StatePanel {
       <div class="hb-chart">${bars}</div>`;
   }
 
-  // ── Tabs + threshold ──────────────────────────────────────────────
+  
 
   _attachEvents() {
     this.el.querySelectorAll('.sp-tab').forEach(tab => {

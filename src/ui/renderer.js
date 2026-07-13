@@ -1,11 +1,3 @@
-/**
- * renderer.js — SVG circuit grid with drag-and-drop gate placement
- *
- * COORDINATE SYSTEM:
- *   x = LEFT_PAD + col * COL_W + COL_W/2
- *   y = TOP_PAD  + qubit * ROW_H + ROW_H/2
- */
-
 import { PALETTE_GROUPS } from './palette.js';
 
 const LEFT_PAD = 60;
@@ -14,7 +6,7 @@ const ROW_H    = 48;
 const COL_W    = 62;
 const RIGHT_PAD = 36;
 
-// Build a flat name→color map from palette groups
+
 const GATE_COLOR = {};
 const GATE_LABEL = { CNOT:'⊕', SWAP:'×', Sdg:'S†', Tdg:'T†' };
 for (const g of PALETTE_GROUPS.flatMap(gr => gr.gates)) {
@@ -25,10 +17,9 @@ export class Renderer {
   constructor(svgEl, circuit, callbacks) {
     this.svg       = svgEl;
     this.circuit   = circuit;
-    this.callbacks = callbacks; // { onClickCell, onClickGate, onDeleteRow }
-
-    // Drag state
-    this._drag     = null; // { gate, ghostEl }
+    this.callbacks = callbacks; 
+    
+    this._drag     = null; 
     this._svgRect  = null;
 
     this._onMouseMove = this._onMouseMove.bind(this);
@@ -47,34 +38,34 @@ export class Renderer {
     this.svg.setAttribute('height', H);
     this.svg.innerHTML = this._build(numQubits, numCols, W, measureResults);
     this._attach();
-    this._svgRect = null; // invalidate cached rect
+    this._svgRect = null; 
   }
 
-  // ── SVG construction ──────────────────────────────────────────────
+  
 
   _build(numQubits, numCols, W, measureResults) {
     let h = '';
 
-    // Column step numbers
+    
     for (let c = 0; c < numCols; c++) {
       const x = this._cx(c);
       h += `<text x="${x}" y="14" font-size="10" fill="var(--muted)" text-anchor="middle"
                    font-family="monospace">${c + 1}</text>`;
     }
 
-    // Qubit rows
+    
     for (let q = 0; q < numQubits; q++) {
       const y = this._qy(q);
 
-      // Wire line
+      
       h += `<line x1="${LEFT_PAD - 12}" y1="${y}" x2="${W - RIGHT_PAD + 4}" y2="${y}"
                    stroke="var(--wire)" stroke-width="1" opacity="0.5"/>`;
 
-      // Qubit label
+      
       h += `<text x="4" y="${y}" font-size="12" fill="var(--label)"
                    dominant-baseline="central" font-family="monospace">q${q}|0⟩</text>`;
 
-      // Delete row button
+      
       h += `<g class="del-row" data-qubit="${q}" style="cursor:pointer" title="Clear row">
               <rect x="${W - RIGHT_PAD + 6}" y="${y - 10}" width="20" height="20" rx="4"
                     fill="var(--surface)" stroke="var(--border)" stroke-width="0.5"/>
@@ -82,7 +73,7 @@ export class Renderer {
                     text-anchor="middle" dominant-baseline="central">×</text>
             </g>`;
 
-      // Drop cells
+      
       for (let c = 0; c < numCols; c++) {
         if (!this.circuit.hasGateAt(c, q)) {
           const cx = this._cx(c);
@@ -90,13 +81,13 @@ export class Renderer {
                        width="${COL_W - 4}" height="${ROW_H - 4}" rx="6"
                        fill="transparent" class="cell-target"
                        data-col="${c}" data-qubit="${q}" style="cursor:crosshair"/>`;
-          // Subtle dot
+         
           h += `<circle cx="${cx}" cy="${y}" r="2.5" fill="var(--wire)" opacity="0.25" pointer-events="none"/>`;
         }
       }
     }
 
-    // Placed gates on top
+    
     for (const op of this.circuit.ops) {
       h += this._renderOp(op, measureResults.get(`${op.col}:${op.qubit}`));
     }
@@ -151,7 +142,7 @@ export class Renderer {
       </g>`;
     }
 
-    // Standard single-qubit gate
+    
     const y = this._qy(op.qubit);
     return `<g class="gate-group" data-col="${op.col}" data-qubit="${op.qubit}" style="cursor:pointer">
       <rect x="${x-17}" y="${y-17}" width="34" height="34" rx="7" fill="${color}"/>
@@ -160,14 +151,13 @@ export class Renderer {
     </g>`;
   }
 
-  // ── Event listeners ───────────────────────────────────────────────
-
+  
   _attach() {
-    // Click empty cell → place gate
+   
     this.svg.querySelectorAll('.cell-target').forEach(el => {
       el.addEventListener('click', () =>
         this.callbacks.onClickCell(+el.dataset.col, +el.dataset.qubit));
-      // Also start a drag from palette onto circuit by supporting drop here
+      
       el.addEventListener('dragover', e => e.preventDefault());
       el.addEventListener('drop', e => {
         e.preventDefault();
@@ -176,21 +166,20 @@ export class Renderer {
       });
     });
 
-    // Click placed gate → remove
+    
     this.svg.querySelectorAll('.gate-group').forEach(el => {
       el.addEventListener('click', () =>
         this.callbacks.onClickGate(+el.dataset.col, +el.dataset.qubit));
     });
 
-    // Delete row
+    
     this.svg.querySelectorAll('.del-row').forEach(el => {
       el.addEventListener('click', () =>
         this.callbacks.onDeleteRow(+el.dataset.qubit));
     });
   }
 
-  // ── Drag support (from palette) ───────────────────────────────────
-
+ 
   startDrag(gateName, originX, originY) {
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
@@ -228,7 +217,7 @@ export class Renderer {
     }
   }
 
-  // ── Coordinate helpers ────────────────────────────────────────────
+  
 
   _cx(col)   { return LEFT_PAD + col * COL_W + COL_W / 2; }
   _qy(qubit) { return TOP_PAD  + qubit * ROW_H + ROW_H / 2; }

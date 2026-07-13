@@ -1,10 +1,3 @@
-/**
- * palette.js — left sidebar gate picker
- *
- * Renders categorized gate buttons. On click, calls onSelect(gateName).
- * On hover, shows a tooltip with the gate's matrix and description.
- */
-
 export const PALETTE_GROUPS = [
   {
     label: 'Single qubit',

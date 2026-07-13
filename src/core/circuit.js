@@ -1,7 +1,3 @@
-/**
- * circuit.js — circuit data model
- */
-
 export class Circuit {
   constructor(numQubits = 2, numCols = 12) {
     this.numQubits = numQubits;
