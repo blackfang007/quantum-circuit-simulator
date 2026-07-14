@@ -168,14 +168,5 @@ the Bloch sphere computes the reduced density matrix `ρ₀ = Tr_rest(|ψ⟩⟨�
 
 ---
 
-## todo
-
-- [ ] Toffoli (CCX)
-- [ ] editable angle for Rx/Ry/Rz
-- [ ] noise / decoherence model
-- [ ] save/load circuit as JSON
-- [ ] GitHub Pages deploy
-
----
 
 [blackfang007](https://github.com/blackfang007)
